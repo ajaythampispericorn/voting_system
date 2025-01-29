@@ -4,7 +4,13 @@ version = "1.0.0"
 authors = []
 
 [addresses]
-voting_addr = "0xeab9cb3d74cbf3b287ef39dadfdd7b460e7fecaabc197a6717a855a1ddf1e672"
+voting_addr = "0xcc68a642cfc8b7119d208e07d397a04fa716c7ffc523a3506c475036ce35f036"
+std = "0x1"
+aptos_std = "0x1"
+aptos_framework = "0x1"
+
+[networks]
+testnet = { rpc = "https://fullnode.testnet.aptoslabs.com/v1" }
 
 [dev-addresses]
 
