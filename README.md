@@ -34,7 +34,8 @@ Go to Aptos [CLI release page](https://github.com/aptos-labs/aptos-core/releases
 Follow the instructions given to install Aptos CLI  
 
 To verify installation,  
-``` aptos --version  
+```  
+aptos --version  
 ```  
 
 ## SETUP CLI CONFIGURATION  
