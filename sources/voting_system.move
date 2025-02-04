@@ -198,11 +198,8 @@ module voting_addr::voting_system {
         };
         false
     }
-<<<<<<< HEAD
-=======
-
     public fun get_candidate_vote_count(candidate: &Candidate): u64 {
     candidate.vote_count
     }
->>>>>>> 7f35eea (update)
+
 }
