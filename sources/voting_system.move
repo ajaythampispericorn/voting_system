@@ -13,6 +13,11 @@ module voting_addr::voting_system {
     const E_INVALID_CANDIDATE: u64 = 4;
     const E_ALREADY_INITIALIZED: u64 = 5;
 
+    // Store the admin address for reference
+    struct AdminStore has key {
+        admin: address
+    }
+
     struct Candidate has store, drop, copy {
         name: String,
         vote_count: u64
@@ -51,34 +56,36 @@ module voting_addr::voting_system {
         candidate_index: u64
     }
 
-    // Initialize function for production
     fun init_module(resource_account: &signer) {
         initialize_internal(resource_account);
     }
 
-    // Public initialize function for testing
     public entry fun initialize(account: &signer) {
         initialize_internal(account);
     }
 
     public fun is_initialized(addr: address): bool {
-    exists<VotingSystem>(get_resource_address(addr))
-}
+        exists<VotingSystem>(get_resource_address(@voting_addr))
+    }
 
-    // Internal initialize function
     fun initialize_internal(account: &signer) {
-        let resource_addr = get_resource_address(signer::address_of(account));
+        let addr = signer::address_of(account);
+        assert!(addr == @voting_addr, E_NOT_AUTHORIZED);
+        
+        let resource_addr = get_resource_address(@voting_addr);
         assert!(!exists<VotingSystem>(resource_addr), E_ALREADY_INITIALIZED);
 
         let (resource_signer, resource_signer_cap) = account::create_resource_account(
             account,
-            vector::empty<u8>() // No seed, using deployed address
+            vector::empty<u8>() // Using deployed address
         );
+
+        move_to(account, AdminStore { admin: addr });
 
         let voting_system = VotingSystem {
             elections: simple_map::create<u64, Election>(),
             election_counter: 0,
-            admin: signer::address_of(account),
+            admin: addr,
             signer_cap: resource_signer_cap,
             election_events: account::new_event_handle<ElectionCreatedEvent>(&resource_signer),
             vote_events: account::new_event_handle<VoteCastEvent>(&resource_signer)
@@ -86,8 +93,8 @@ module voting_addr::voting_system {
         move_to(&resource_signer, voting_system);
     }
 
-    public fun get_resource_address(deployer: address): address {
-        account::create_resource_address(&deployer, vector::empty<u8>())
+    public fun get_resource_address(_deployer: address): address {
+        account::create_resource_address(&@voting_addr, vector::empty<u8>())
     }
 
     public entry fun create_election(
@@ -95,11 +102,10 @@ module voting_addr::voting_system {
         title: String,
         candidate_names: vector<String>
     ) acquires VotingSystem {
-        let addr = signer::address_of(account);
-        let resource_addr = get_resource_address(addr);
+        let resource_addr = get_resource_address(@voting_addr);
         let voting_system = borrow_global_mut<VotingSystem>(resource_addr);
         
-        assert!(addr == voting_system.admin, E_NOT_AUTHORIZED);
+        assert!(signer::address_of(account) == voting_system.admin, E_NOT_AUTHORIZED);
         
         let candidates = vector::empty<Candidate>();
         let i = 0;
@@ -134,8 +140,8 @@ module voting_addr::voting_system {
         election_id: u64,
         candidate_index: u64
     ) acquires VotingSystem, VoterRecord {
-        let addr = signer::address_of(account);
-        let resource_addr = get_resource_address(addr);
+        let voter_addr = signer::address_of(account);
+        let resource_addr = get_resource_address(@voting_addr);
         let voting_system = borrow_global_mut<VotingSystem>(resource_addr);
         
         // Ensure election exists and is active
@@ -144,11 +150,11 @@ module voting_addr::voting_system {
         assert!(election.is_active, E_ELECTION_NOT_FOUND);
         
         // Check if voter has already voted
-        if (!exists<VoterRecord>(addr)) {
+        if (!exists<VoterRecord>(voter_addr)) {
             move_to(account, VoterRecord { voted_elections: vector::empty() });
         };
         
-        let voter_record = borrow_global_mut<VoterRecord>(addr);
+        let voter_record = borrow_global_mut<VoterRecord>(voter_addr);
         let i = 0;
         let len = vector::length(&voter_record.voted_elections);
         while (i < len) {
@@ -167,7 +173,7 @@ module voting_addr::voting_system {
         // Emit vote event
         event::emit_event(&mut voting_system.vote_events, VoteCastEvent {
             election_id,
-            voter: addr,
+            voter: voter_addr,
             candidate_index
         });
     }
@@ -198,8 +204,8 @@ module voting_addr::voting_system {
         };
         false
     }
-    public fun get_candidate_vote_count(candidate: &Candidate): u64 {
-    candidate.vote_count
-    }
 
+    public fun get_candidate_vote_count(candidate: &Candidate): u64 {
+        candidate.vote_count
+    }
 }
