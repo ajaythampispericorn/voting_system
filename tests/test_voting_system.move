@@ -5,9 +5,13 @@ module voting_addr::voting_system_tests {
     use std::signer;
     use aptos_framework::account;
     use aptos_framework::timestamp;
-    use voting_addr::voting_system::{Self, VotingSystem, VoterRecord};
+    use voting_addr::voting_system::{
+        Self, 
+        VotingSystem, 
+        VoterRecord, 
+        Candidate
+    };
 
-    // Error codes from the main module
     const E_NOT_AUTHORIZED: u64 = 1;
     const E_ELECTION_NOT_FOUND: u64 = 2;
     const E_ALREADY_VOTED: u64 = 3;
@@ -21,7 +25,7 @@ module voting_addr::voting_system_tests {
 
     #[test_only]
     fun get_resource_address(signer: &signer): address {
-        voting_system::get_resource_address(signer)
+        voting_system::get_resource_address(signer::address_of(signer))
     }
 
     #[test]
@@ -32,7 +36,7 @@ module voting_addr::voting_system_tests {
         voting_system::initialize(&admin);
         
         let resource_addr = get_resource_address(&admin);
-        assert!(exists<VotingSystem>(resource_addr), 0);
+        assert!(voting_system::is_initialized(signer::address_of(&admin)), 0);
     }
 
     #[test]
@@ -42,7 +46,6 @@ module voting_addr::voting_system_tests {
         
         voting_system::initialize(&admin);
 
-        // Create election
         let candidates = vector::empty<string::String>();
         vector::push_back(&mut candidates, string::utf8(b"Candidate 1"));
         vector::push_back(&mut candidates, string::utf8(b"Candidate 2"));
@@ -53,7 +56,6 @@ module voting_addr::voting_system_tests {
             candidates
         );
 
-        // Verify election details
         let (title, candidates) = voting_system::get_election_details(0);
         assert!(title == string::utf8(b"Test Election"), 0);
         assert!(vector::length(&candidates) == 2, 1);
@@ -67,7 +69,6 @@ module voting_addr::voting_system_tests {
         
         voting_system::initialize(&admin);
 
-        // Try to create election with non-admin account
         let candidates = vector::empty<string::String>();
         vector::push_back(&mut candidates, string::utf8(b"Candidate 1"));
         
@@ -85,7 +86,6 @@ module voting_addr::voting_system_tests {
         
         voting_system::initialize(&admin);
 
-        // Create election
         let candidates = vector::empty<string::String>();
         vector::push_back(&mut candidates, string::utf8(b"Candidate 1"));
         vector::push_back(&mut candidates, string::utf8(b"Candidate 2"));
@@ -96,15 +96,12 @@ module voting_addr::voting_system_tests {
             candidates
         );
 
-        // Cast vote
         voting_system::cast_vote(&voter, 0, 1);
 
-        // Verify vote was recorded
         assert!(voting_system::has_voted(signer::address_of(&voter), 0), 0);
 
-        // Verify vote count
         let (_, candidates) = voting_system::get_election_details(0);
-        assert!(vector::borrow(&candidates, 1).vote_count == 1, 1);
+        assert!(voting_system::get_candidate_vote_count(vector::borrow(&candidates, 1)) == 1, 1);
     }
 
     #[test]
@@ -115,7 +112,6 @@ module voting_addr::voting_system_tests {
         
         voting_system::initialize(&admin);
 
-        // Create election
         let candidates = vector::empty<string::String>();
         vector::push_back(&mut candidates, string::utf8(b"Candidate 1"));
         
@@ -125,7 +121,6 @@ module voting_addr::voting_system_tests {
             candidates
         );
 
-        // Cast vote twice
         voting_system::cast_vote(&voter, 0, 0);
         voting_system::cast_vote(&voter, 0, 0); // Should fail
     }
@@ -138,7 +133,6 @@ module voting_addr::voting_system_tests {
         
         voting_system::initialize(&admin);
 
-        // Create election
         let candidates = vector::empty<string::String>();
         vector::push_back(&mut candidates, string::utf8(b"Candidate 1"));
         
@@ -148,8 +142,7 @@ module voting_addr::voting_system_tests {
             candidates
         );
 
-        // Try to vote for non-existent candidate
-        voting_system::cast_vote(&voter, 0, 99);
+        voting_system::cast_vote(&voter, 0, 99); // Invalid candidate index
     }
 
     #[test]
@@ -160,8 +153,7 @@ module voting_addr::voting_system_tests {
         
         voting_system::initialize(&admin);
 
-        // Try to get details of non-existent election
-        voting_system::get_election_details(99);
+        voting_system::get_election_details(99); // Non-existent election
     }
 
     #[test]
@@ -171,7 +163,6 @@ module voting_addr::voting_system_tests {
         
         voting_system::initialize(&admin);
 
-        // Create first election
         let candidates1 = vector::empty<string::String>();
         vector::push_back(&mut candidates1, string::utf8(b"Candidate 1"));
         vector::push_back(&mut candidates1, string::utf8(b"Candidate 2"));
@@ -182,7 +173,6 @@ module voting_addr::voting_system_tests {
             candidates1
         );
 
-        // Create second election
         let candidates2 = vector::empty<string::String>();
         vector::push_back(&mut candidates2, string::utf8(b"Candidate A"));
         vector::push_back(&mut candidates2, string::utf8(b"Candidate B"));
@@ -193,26 +183,22 @@ module voting_addr::voting_system_tests {
             candidates2
         );
 
-        // Cast votes
         voting_system::cast_vote(&voter1, 0, 0);
         voting_system::cast_vote(&voter2, 0, 1);
         voting_system::cast_vote(&voter1, 1, 1);
         voting_system::cast_vote(&voter2, 1, 0);
 
-        // Verify votes
         assert!(voting_system::has_voted(signer::address_of(&voter1), 0), 0);
         assert!(voting_system::has_voted(signer::address_of(&voter1), 1), 1);
         assert!(voting_system::has_voted(signer::address_of(&voter2), 0), 2);
         assert!(voting_system::has_voted(signer::address_of(&voter2), 1), 3);
 
-        // Verify vote counts for first election
         let (_, candidates1) = voting_system::get_election_details(0);
-        assert!(vector::borrow(&candidates1, 0).vote_count == 1, 4);
-        assert!(vector::borrow(&candidates1, 1).vote_count == 1, 5);
+        assert!(voting_system::get_candidate_vote_count(vector::borrow(&candidates1, 0)) == 1, 4);
+        assert!(voting_system::get_candidate_vote_count(vector::borrow(&candidates1, 1)) == 1, 5);
 
-        // Verify vote counts for second election
         let (_, candidates2) = voting_system::get_election_details(1);
-        assert!(vector::borrow(&candidates2, 0).vote_count == 1, 6);
-        assert!(vector::borrow(&candidates2, 1).vote_count == 1, 7);
+        assert!(voting_system::get_candidate_vote_count(vector::borrow(&candidates2, 0)) == 1, 6);
+        assert!(voting_system::get_candidate_vote_count(vector::borrow(&candidates2, 1)) == 1, 7);
     }
 }
