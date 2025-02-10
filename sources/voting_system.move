@@ -4,7 +4,7 @@ module voting_addr::voting_system {
     use std::signer;
     use aptos_framework::account::{Self, SignerCapability};
     use aptos_framework::event::{Self, EventHandle};
-    use aptos_std::simple_map::{Self, SimpleMap};
+    use aptos_std::table::{Self, Table}; // Using Table instead of SmartTable
 
     // Error codes
     const E_NOT_AUTHORIZED: u64 = 1;
@@ -12,11 +12,6 @@ module voting_addr::voting_system {
     const E_ALREADY_VOTED: u64 = 3;
     const E_INVALID_CANDIDATE: u64 = 4;
     const E_ALREADY_INITIALIZED: u64 = 5;
-
-    // Store the admin address for reference
-    struct AdminStore has key {
-        admin: address
-    }
 
     struct Candidate has store, drop, copy {
         name: String,
@@ -31,7 +26,7 @@ module voting_addr::voting_system {
     }
 
     struct VotingSystem has key {
-        elections: SimpleMap<u64, Election>,
+        elections: Table<u64, Election>,
         election_counter: u64,
         admin: address,
         signer_cap: SignerCapability,
@@ -65,25 +60,23 @@ module voting_addr::voting_system {
     }
 
     public fun is_initialized(addr: address): bool {
-        exists<VotingSystem>(get_resource_address(@voting_addr))
+        exists<VotingSystem>(get_resource_address())
     }
 
     fun initialize_internal(account: &signer) {
         let addr = signer::address_of(account);
         assert!(addr == @voting_addr, E_NOT_AUTHORIZED);
         
-        let resource_addr = get_resource_address(@voting_addr);
+        let resource_addr = get_resource_address();
         assert!(!exists<VotingSystem>(resource_addr), E_ALREADY_INITIALIZED);
 
         let (resource_signer, resource_signer_cap) = account::create_resource_account(
             account,
-            vector::empty<u8>() // Using deployed address
+            vector::empty<u8>()
         );
 
-        move_to(account, AdminStore { admin: addr });
-
         let voting_system = VotingSystem {
-            elections: simple_map::create<u64, Election>(),
+            elections: table::new(), // Using table instead of smart_table
             election_counter: 0,
             admin: addr,
             signer_cap: resource_signer_cap,
@@ -93,7 +86,7 @@ module voting_addr::voting_system {
         move_to(&resource_signer, voting_system);
     }
 
-    public fun get_resource_address(_deployer: address): address {
+    public fun get_resource_address(): address {
         account::create_resource_address(&@voting_addr, vector::empty<u8>())
     }
 
@@ -102,7 +95,7 @@ module voting_addr::voting_system {
         title: String,
         candidate_names: vector<String>
     ) acquires VotingSystem {
-        let resource_addr = get_resource_address(@voting_addr);
+        let resource_addr = get_resource_address();
         let voting_system = borrow_global_mut<VotingSystem>(resource_addr);
         
         assert!(signer::address_of(account) == voting_system.admin, E_NOT_AUTHORIZED);
@@ -125,7 +118,7 @@ module voting_addr::voting_system {
             is_active: true
         };
 
-        simple_map::add(&mut voting_system.elections, voting_system.election_counter, election);
+        table::add(&mut voting_system.elections, voting_system.election_counter, election);
         
         event::emit_event(&mut voting_system.election_events, ElectionCreatedEvent {
             election_id: voting_system.election_counter,
@@ -141,12 +134,12 @@ module voting_addr::voting_system {
         candidate_index: u64
     ) acquires VotingSystem, VoterRecord {
         let voter_addr = signer::address_of(account);
-        let resource_addr = get_resource_address(@voting_addr);
+        let resource_addr = get_resource_address();
         let voting_system = borrow_global_mut<VotingSystem>(resource_addr);
         
         // Ensure election exists and is active
-        assert!(simple_map::contains_key(&voting_system.elections, &election_id), E_ELECTION_NOT_FOUND);
-        let election = simple_map::borrow_mut(&mut voting_system.elections, &election_id);
+        assert!(table::contains(&voting_system.elections, election_id), E_ELECTION_NOT_FOUND);
+        let election = table::borrow_mut(&mut voting_system.elections, election_id);
         assert!(election.is_active, E_ELECTION_NOT_FOUND);
         
         // Check if voter has already voted
@@ -179,11 +172,11 @@ module voting_addr::voting_system {
     }
 
     public fun get_election_details(election_id: u64): (String, vector<Candidate>) acquires VotingSystem {
-        let resource_addr = get_resource_address(@voting_addr);
+        let resource_addr = get_resource_address();
         let voting_system = borrow_global<VotingSystem>(resource_addr);
         
-        assert!(simple_map::contains_key(&voting_system.elections, &election_id), E_ELECTION_NOT_FOUND);
-        let election = simple_map::borrow(&voting_system.elections, &election_id);
+        assert!(table::contains(&voting_system.elections, election_id), E_ELECTION_NOT_FOUND);
+        let election = table::borrow(&voting_system.elections, election_id);
         
         (election.title, election.candidates)
     }
